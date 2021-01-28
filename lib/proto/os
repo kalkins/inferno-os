@@ -34,6 +34,11 @@ Inferno
 		include
 			*
 		lib
+	riscv
+		bin
+		include
+			*
+		lib
 include
 	flate.h
 	kern.h
@@ -77,6 +82,7 @@ libkern
 	frexp-sparc.c
 	frexp-spim.c
 	frexp-thumb.c
+	frexp-riscv.c
 	getfcr-386.s
 	getfcr-68000.s
 	getfcr-arm.s
@@ -85,9 +91,11 @@ libkern
 	getfcr-sparc.s
 	getfcr-spim.s
 	getfcr-thumb.s
+	getfcr-riscv.s
 	getfields.c
 	log.c
 	memccpy-power.s
+	memccpy-riscv.s
 	memccpy.c
 	memchr.c
 	memcmp-power.s
@@ -101,6 +109,7 @@ libkern
 	memmove-spim.s
 	memmove-sparc.s
 	memmove-thumb.s
+	memmove-riscv.s
 	memset-386.s
 	memset-68000.s
 	memset-arm.s
@@ -109,6 +118,7 @@ libkern
 	memset-sparc.s
 	memset-spim.s
 	memset-thumb.s
+	memset-riscv.s
 	memset.c
 	mkfile
 	mkfile-386
@@ -119,6 +129,7 @@ libkern
 	mkfile-sparc
 	mkfile-spim
 	mkfile-thumb
+	mkfile-riscv
 	muldiv-68000.s
 	nan-386.c
 	nan-68000.c
@@ -128,6 +139,7 @@ libkern
 	nan-spim.c
 	nan-sparc.c
 	nan-thumb.c
+	nan-riscv.c
 	netmkaddr.c
 	pow.c
 	pow10.c
@@ -149,6 +161,7 @@ libkern
 	strchr-sparc.s
 	strchr-spim.c
 	strchr-thumb.s
+	strchr-riscv.s
 	strchr.c
 	strcmp-power.s
 	strcmp.c
@@ -183,6 +196,7 @@ libkern
 	vlop-sparc.s
 	vlop-spim.s
 	vlop-thumb.s
+	vlop-riscv.s
 	vlrt-386.c
 	vlrt-68000.c
 	vlrt-arm.c
@@ -191,6 +205,7 @@ libkern
 	vlrt-sparc.c
 	vlrt-spim.c
 	vlrt-thumb.c
+	vlrt-riscv.c
 	vseprint.c
 	vsmprint.c
 	vsnprint.c

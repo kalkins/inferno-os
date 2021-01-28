@@ -1,0 +1,13 @@
+#
+#	riscv-specific files
+#
+TARGFILES=\
+	frexp-riscv.$O\
+	getfcr-riscv.$O\
+	memmove-riscv.$O\
+	memset-riscv.$O\
+	nan-riscv.$O\
+	strchr-riscv.$O\
+	vlop-riscv.$O\
+	vlrt-riscv.$O\
+	#memccpy-riscv.$O\
