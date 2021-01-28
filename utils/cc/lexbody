@@ -418,8 +418,7 @@ l1:
 			for(;;) {
 				c = GETC();
 				if(c == '\n') {
-					lineno++;
-					goto l0;
+					goto l1;
 				}
 				if(c == EOF) {
 					yyerror("eof in comment");
