@@ -1,8 +1,8 @@
 # object files, libraries, etc
-*.[8qkv5967o]
+*.[8qkv5967oij]
 *.obj
-[8qkv965o].out
-[8qkv965o].emu
+[8qkv965oij].out
+[8qkv965oij].emu
 obj.out
 obj.map
 vc*.pdb

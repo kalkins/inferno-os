@@ -1,0 +1,77 @@
+#                                              -*-makefile-*-
+<../../mkconfig
+
+#Configurable parameters
+
+CONF=virtriscv			#default configuration
+CONFLIST=virtriscv
+
+SYSTARG=$OSTARG
+OBJTYPE=riscv
+INSTALLDIR=$ROOT/Inferno/$OBJTYPE/bin	#path of directory where kernel is installed
+
+LOADADDR=0x80400000
+
+<$ROOT/mkfiles/mkfile-$SYSTARG-$OBJTYPE	#set vars based on target system
+
+<| $SHELLNAME ../port/mkdevlist $CONF
+
+HFILES=\
+	mem.h\
+	dat.h\
+	fns.h\
+	io.h\
+
+OBJ=\
+	load.$O\
+	clock.$O\
+	portclock.$O\
+	mul64fract.$O\
+	tod.$O\
+	plic.$O\
+	sbi.$O\
+	inb.$O\
+	dump.$O\
+	csr.$O\
+	trap.$O\
+	intr.$O\
+	archvirtriscv.$O\
+	main.$O\
+	$RISCVOBJ\
+	$IP\
+	$DEVS\
+	$ETHERS\
+	$LINKS\
+	$PORT\
+	$MISC\
+	$OTHERS\
+	$CONF.root.$O\
+
+LIBNAMES=${LIBS:%=lib%.a}
+LIBDIRS=$LIBS
+
+CFLAGS=-wFV -I$ROOT/Inferno/$OBJTYPE/include -I$ROOT/include -I$ROOT/libinterp
+KERNDATE=`{$NDATE}
+
+default:V: i$CONF
+
+i$CONF: $OBJ $CONF.c $CONF.root.h $LIBNAMES
+	$CC $CFLAGS -DKERNDATE=$KERNDATE $CONF.c
+	$LD -l -o $target -H5 -T$LOADADDR $OBJ $CONF.$O $LIBFILES
+
+install:V: i$CONF
+        cp i$CONF $INSTALLDIR/i$CONF
+
+<../port/portmkfile
+
+trap.$O: csr.h
+
+main.$O: $ROOT/Inferno/$OBJTYPE/include/ureg.h csr.h
+
+csr.h csr.s: generate_csr.sh csrregs.h
+	sh generate_csr.sh csrregs.h
+
+csr.$O: csr.h csr.s
+
+devuart.$O:	../port/devuart.c ../port/uart.h
+	$CC $CFLAGS ../port/devuart.c

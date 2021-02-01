@@ -21,6 +21,8 @@ rpcg	power	RPCG-Lite MPC823/850 board
 fads	power	MPC8xx FADS development board
 mpc	power	code common to ports to Motorola MPC8xx boards
 
+virtriscv	riscv	RISC-V on the QEMU emulator
+
 pc	386	basis for ports to various PC-based platforms
 
 #			basic Inferno native kernel components
