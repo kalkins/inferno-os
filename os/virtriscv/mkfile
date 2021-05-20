@@ -35,6 +35,11 @@ OBJ=\
 	csr.$O\
 	trap.$O\
 	intr.$O\
+	virtio.$O\
+	input.$O\
+	kbd.$O\
+	mouse.$O\
+	gpu.$O\
 	archvirtriscv.$O\
 	main.$O\
 	$RISCVOBJ\

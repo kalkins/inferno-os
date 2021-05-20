@@ -5,6 +5,7 @@
 #include "fns.h"
 #include "../port/uart.h"
 #include "sbi.h"
+#include "virtio.h"
 #include "version.h"
 
 #define	MAXCONF		32
@@ -191,6 +192,9 @@ main() {
 	clockinit();
 	i8250console();
 	serwrite = uartputs;
+	virtio_init();
+	input_init();
+	screeninit();
 
 	print("\nRISC-V QEMU\n");
 	print("Inferno OS %s Vita Nuova\n\n", VERSION);

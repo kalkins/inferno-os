@@ -1,0 +1,9 @@
+Virtual RISC-V kernel
+
+This kernel is used to test the port to RISC-V in an easily debuggable environment, and without dealing with specific hardware.
+
+VirtIO drivers were implemented to test how the kernel worked with input and output. The drivers are generic, and should work on other architectures.
+
+The kernel can be run on QEMU with screen, hard drive and input devices using the following command:
+
+qemu-system-riscv32 -M virt -m 64M -d guest_errors,unimp -kernel ivirtriscv -serial stdio -drive if=none,format=raw,file=hdd.img,id=hdd -device virtio-blk-device,scsi=off,drive=hdd -device virtio-gpu-device -device virtio-keyboard-device -device virtio-mouse-device
