@@ -75,7 +75,7 @@ code
 	int main_pool_pcnt = 40;
 	int heap_pool_pcnt = 20;
 	int image_pool_pcnt = 40;
-	int cflag=0;
+	int cflag=7;
 	int swcursor=1;
 	int consoleprint=1;
 
@@ -92,6 +92,8 @@ root
 	/net	/
 	/prog	/
 	/n	/
+	/n/local	/
+	/n/dos	/
 	/tmp	/
 	/dis/lib
 	/dis/disk

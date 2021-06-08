@@ -63,6 +63,7 @@ default:V: i$CONF
 i$CONF: $OBJ $CONF.c $CONF.root.h $LIBNAMES
 	$CC $CFLAGS -DKERNDATE=$KERNDATE $CONF.c
 	$LD -l -o $target -H5 -T$LOADADDR $OBJ $CONF.$O $LIBFILES
+	$LD -a -l -o $target -H5 -T$LOADADDR $OBJ $CONF.$O $LIBFILES > linker-log.txt
 
 install:V: i$CONF
         cp i$CONF $INSTALLDIR/i$CONF

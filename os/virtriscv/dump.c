@@ -259,6 +259,8 @@ scan_for_stack_link(void *start_addr, void *end_addr)
 	for (addr = start_addr; (void*) addr <= end_addr; addr++) {
 		// Get the address from the stack
 		link = (void*) *addr;
+		// Decrement to get the jump instruction
+		link--;
 
 		// See if it is a valid address, and that address contains a JAL instruction
 		if (isvalid_wa(link) && is_jal(*link)) {
@@ -278,6 +280,7 @@ _dumpstack(Ureg *ureg)
 	ulong *caller;
 	ulong *prev_caller;
 	ulong *callee;
+	ulong **link;
 
 	l = (ulong*) ureg->sp;
 
@@ -300,138 +303,66 @@ _dumpstack(Ureg *ureg)
 		return;
 	}
 
-	// If we are in a leaf we have to get the link address from R1.
-	// Otherwise, we get the link address from 0(R2).
-	// The problem is knowing if we are in a leaf or not.
-	int leaf = 0;
-	caller = 0;
-	ulong *linkreg = ((ulong*) ureg->r1);
-	ulong *linkstack = ((ulong*) (*l));
+	/*
+	link = scan_for_stack_link(l, estack);
 
-	if (isvalid_wa(linkreg)) {
-		inst = *(linkreg-1);
-		long offset = decode_jal(inst);
+	if (link == 0) {
+		iprint("Could not find a link address on the stack. Aborting trace\n");
+		return;
+	} else if ((ulong) *link == ureg->r1) {
+		// The link address and link register match, so it's correct
+		l = ((ulong*) link) + 1;
+		caller = *link - 1;
+		iprint("0x%p called the function containing 0x%p\n", caller, ureg->pc);
+	} else {
+		// The link address and link register doesn't match.
+		// This could be because the function is a leaf,
+		// or because another function was called and returned.
 
-		if (offset != -1) {
-			long imm = decode_add_sp(*((ulong*) ((ulong) linkreg + offset)));
-			if (imm == -1) {
-				caller = linkreg;
-				leaf = 1;
+		// Try to look for a stack decrement instruction
+		ulong *decaddr = scan_for_stack_dec((void*) ureg->pc);
+
+		if (isvalid_wa(decaddr)) {
+			// Compare the
+			long imm = decode_add_sp(*decaddr);
+
+			if (imm == (ulong) link - (ulong) l) {
+				// The stack decrement matches the link
+				// address on the stack, so it's confirmed
+				l = ((ulong*) link) + 1;
+				caller = *link - 1;
+				iprint("0x%p called the function containing 0x%p\n", caller, ureg->pc);
+			} else {
+
 			}
 		}
-	} else if (linkreg != 0) {
-		iprint("WARNING: Invalid link register value 0x%p\n", linkreg);
 	}
+	*/
 
-	if (caller == 0) {
-		if (isvalid_wa(linkstack)) {
-			caller = linkstack;
-		} else {
-			iprint("ERROR: Both the link register (0x%p) and link on stack (0x%p) are invalid.\n", linkreg, linkstack);
-			iprint("Aborting stack trace\n");
-			return;
-		}
-	}
+	iprint("Call stack:\n");
 
-	// Subtract one to get the address of the instruction that called the function
-	caller -= 1;
-
-	prev_caller = 0;
-
-	while(l<estack) {
+	while (l < estack) {
 		if (!isvalid_wa(caller)) {
 			iprint("Illegal link address 0x%p\n", caller);
 			iprint("Aborting stack trace\n");
 			break;
 		}
 
-		inst = *caller;
+		// Scan through the stack after the next link address
+		link = scan_for_stack_link(l, estack);
+		if (link != 0) {
+			l = ((ulong*) link) + 1;
+			caller = *link - 1;
 
-		int jaloff = decode_jal(inst);
-		if (jaloff == -1) {
-			iprint("ERROR:\n");
-			iprint("Instruction at link address 0x%p is not a JAL. This might be the top of a proc\n", caller);
-			iprint("The instruction was 0x%08lux\n", inst);
-			dumplongs("caller", caller-12, 32);
-			iprint("Aborting stack trace\n");
-			break;
-		} else if (jaloff == 0) {
-			// The decoding failed without error. The caller is known, but the callee is not.
-
-			// Scan through the stack after the next link address
-			ulong **link = scan_for_stack_link(l, estack);
-			if (link != 0 && *link == caller) {
-				iprint("0x%p called the function containing 0x%p\n", caller, prev_caller);
-				l = (ulong*) link;
-				prev_caller = caller;
-				caller = *link;
-				continue;
+			if (is_compressed_jal(*caller) || is_compressed_jalr(*caller)) {
+				caller = (void*) (((char*) caller) + 2);
 			}
 
-			// Look through the instructions after the link register being
-			// saved to stack. If it doesn't occur after 200 instructions,
-			// print an error
-			if (leaf == 0) {
-			    int i;
-			    ulong addr = (ulong) prev_caller;
-			    callee = scan_for_stack_dec(prev_caller);
-
-			    if (callee == 0) {
-				    iprint("ERROR: The function at 0x%p is longer than the limit of %d instructions\n", prev_caller, SCAN_LIMIT);
-				    iprint("Stack scanning failed. Aborting stack trace.\n");
-				    break;
-			    }
-			} else {
-				iprint("ERROR:\n");
-				iprint("Could not determine jump location\n");
-				break;
-			}
+			iprint("0x%p\n", caller);
 		} else {
-			// The decoding worked. Calculate the address
-			callee = (ulong*) (((ulong) caller) + jaloff);
-		}
-
-		// Check that the instruction is "ADD $x, R2, R2"
-		inst = *callee;
-		long addimm = decode_add_sp(inst);
-		if (addimm == -1) {
-			if (leaf == 1) {
-				// Treat it as a zero, to not change l
-				addimm = 0;
-			} else {
-				iprint("ERROR:\n");
-				iprint("The first instruction in the function at 0x%p does not grow the stack.\n", callee);
-				iprint("The instruction was 0x%08lux\n", inst);
-				dumplongs("callee", callee-12, 32);
-				iprint("Aborting stack trace\n");
-				break;
-			}
-		}
-
-		iprint("0x%p called from 0x%p\n", callee, caller);
-
-		if (addimm > 0) {
-			iprint("ERROR:\n");
-			iprint("The stack is incremented, not decremented, at 0x%p.\n", callee);
-			dumplongs("callee", callee-12, 32);
-			iprint("Aborting stack trace\n");
+			iprint("Searching for link on stack failed\n");
 			break;
 		}
-
-		// The next function is not a leaf.
-		leaf = 0;
-		// Increment the stack. l has to be cast back and forth to avoid pointer alignment.
-		// addimm is negative, so it's subtracted to increment.
-		l =  (ulong*) (((ulong) l) - addimm);
-		// The next link address is stored at 0(R2). Decrement to get the address of the caller.
-		prev_caller = caller;
-		caller = (ulong*) (*l);
-
-		if (caller == 0) {
-			break;
-		}
-
-		caller -= 1;
 	}
 }
 
@@ -443,7 +374,7 @@ void
 callwithureg(void (*fn)(Ureg*))
 {
 	Ureg ureg;
-	ureg.pc = (ulong) &callwithureg;
+	ureg.pc = (ulong) callwithureg;
 	ureg.sp = getsp();
 	ureg.r1 = 0;
 	fn(&ureg);
@@ -458,14 +389,14 @@ dumpstack(void)
 void
 dumpregs(Ureg* ureg)
 {
-	iprint("Mode  0x%08lux   PC   0x%08lux   status  0x%08lux   cause    0x%08lux   tval  0x%08lux \n",
+	iprint("Mode  0x%08lux   PC    0x%08lux   status  0x%08lux   cause   0x%08lux   tval     0x%08lux \n",
 	      ureg->curmode, ureg->pc, ureg->status, ureg->cause, ureg->tval);
-	iprint("R14   0x%08lux   R13  0x%08lux   R12     0x%08lux   R11      0x%08lux   R10   0x%08lux\n",
-		ureg->r14, ureg->r13, ureg->r12, ureg->r11, ureg->r10);
-	iprint("R9    0x%08lux   R8   0x%08lux   R7      0x%08lux   R6       0x%08lux   R5    0x%08lux\n",
-		ureg->r9, ureg->r8, ureg->r7, ureg->r6, ureg->r5);
-	iprint("R4    0x%08lux   R3   0x%08lux   R2/sp   0x%08lux   R1/link  0x%08lux\n",
-		ureg->r4, ureg->r3, ureg->r2, ureg->r1);
+	iprint("R15   0x%08lux   R14   0x%08lux   R13     0x%08lux   R12     0x%08lux   R11      0x%08lux\n",
+		ureg->r15, ureg->r14, ureg->r13, ureg->r12, ureg->r11);
+	iprint("R10   0x%08lux   R9    0x%08lux   R8      0x%08lux   R7      0x%08lux   R6       0x%08lux\n",
+	       ureg->r10, ureg->r9, ureg->r8, ureg->r7, ureg->r6);
+	iprint("R5    0x%08lux   R4    0x%08lux   R3      0x%08lux   R2/sp   0x%08lux   R1/link  0x%08lux\n",
+	       ureg->r5, ureg->r4, ureg->r3, ureg->r2, ureg->r1);
 
 	dumplongs("stack", (ulong *)(ureg->sp), 16);
 	iprint("\n");
