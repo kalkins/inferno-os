@@ -460,6 +460,92 @@ loadi(int reg, ulong val)
 }
 
 static void
+multiply(int rd, int rs, long c)
+{
+	// Multiply by a constant, rd = rs * c
+	int shamt;
+
+	if (c < 0) {
+		NEG(rd, rs);
+		rs = rd;
+		c = -c;
+	}
+
+	switch (c) {
+	case 0:
+		MOV(rd, R0);
+		break;
+	case 1:
+		if (rd != rs)
+			MOV(rd, rs);
+		break;
+	case 2:
+		shamt = 1;
+		goto shift;
+	case 3:
+		shamt = 1;
+		goto shiftadd;
+	case 4:
+		shamt = 2;
+		goto shift;
+	case 5:
+		shamt = 2;
+		goto shiftadd;
+	case 7:
+		shamt = 3;
+		goto shiftsub;
+	case 8:
+		shamt = 3;
+		goto shift;
+	case 16:
+		shamt = 4;
+		goto shift;
+	case 32:
+		shamt = 5;
+		goto shift;
+	case 64:
+		shamt = 6;
+		goto shift;
+	case 128:
+		shamt = 7;
+		goto shift;
+	case 256:
+		shamt = 8;
+		goto shift;
+	case 512:
+		shamt = 9;
+		goto shift;
+	case 1024:
+		shamt = 10;
+		goto shift;
+	shift:
+		SLLI(rd, rs, shamt);
+		break;
+	shiftadd:
+		if (rd == rs) {
+			MOV(Rtmp, rs);
+			rs = Rtmp;
+		}
+
+		SLLI(rd, rs, shamt);
+		ADD(rd, rd, rs);
+		break;
+	shiftsub:
+		if (rd == rs) {
+			MOV(Rtmp, rs);
+			rs = Rtmp;
+		}
+
+		SLLI(rd, rs, shamt);
+		SUB(rd, rd, rs);
+		break;
+	default:
+		loadi(Rtmp, c);
+		MUL(rd, rd, Rtmp);
+	}
+}
+
+static void
 mem(int type, int r, int base, long offset)
 {
 	// Load or store data at an offset from an address in a register.
@@ -651,9 +737,6 @@ rmcall(void)
 	Frame *f;
 	Prog *p;
 
-	iprint("rmcall\n");
-	while (1) {}
-
 	if (R.dt == (ulong) H)
 		error(exModule);
 
@@ -661,7 +744,6 @@ rmcall(void)
 	if (f == H)
 		error(exModule);
 
-	iprint("rmcall\nf: 0x%p\nR.dt: 0x%p\n", f, R.dt);
 	f->mr = nil;
 
 	((void(*)(Frame*))R.dt)(f);
@@ -1139,7 +1221,6 @@ macmcal(void)
 	// - RA2: The frame address, src1 to mcall
 	// - RA3: The module reference, src3 to mcall
 
-	// TODO: What if one of the fields are invalid?
 	ulong *branch1, *branch2, *branch3;
 
 	branch1 = code;
@@ -1149,11 +1230,8 @@ macmcal(void)
 	mem(Ldw, RA1, RA3, O(Modlink, prog));	// Load m->prog into RA1
 
 	branch2 = code;
-	BEQZ(RA1, 0);
-	// If m->prog != 0
-
-	// endif
-	PATCHBRANCH(branch1);
+	BNEZ(RA1, 0);
+	// If m->prog == 0
 
 	mem(Stw, Rlink, Rreg, O(REG, st));	// Store link register
 	mem(Stw, RA2, Rreg, O(REG, FP));	// Store FP register
@@ -1168,17 +1246,23 @@ macmcal(void)
 	mem(Ldw, Rmp, Rreg, O(REG, MP));	// Load MP register
 	RETURN;
 
-	PATCHBRANCH(branch2);		// If m->prog == 0
+	// else
+	PATCHBRANCH(branch1);			// If RA0 == H
+	PATCHBRANCH(branch2);			// If m->prog != 0
 
-	MOV(Rfp, RA2);			// Rfp = RA2
-	mem(Stw, RA3, Rreg, O(REG, M));	// R->M = RA3
-	mem(Ldw, RA1, RA3, O(Heap, ref)-sizeof(Heap));
+	MOV(Rfp, RA2);				// Rfp = RA2
+	mem(Stw, RA3, Rreg, O(REG, M));		// R.M = RA3
+
+	// D2H(RA3)->ref++
+	ulong heapref = O(Heap, ref) - sizeof(Heap);
+	mem(Ldw, RA1, RA3, heapref);
 	ADDI(RA1, RA1, 1);
-	mem(Stw, RA1, RA3, O(Heap, ref)-sizeof(Heap));
-	mem(Ldw, Rmp, RA3, O(Modlink, MP));	// Rmp = R.M->mp
-	mem(Stw, Rmp, Rreg, O(REG, MP));	// R.MP = RA3, R.MP
-	mem(Ldw, RA1, RA3, O(Modlink, compiled));
+	mem(Stw, RA1, RA3, heapref);
 
+	mem(Ldw, Rmp, RA3, O(Modlink, MP));	// Rmp = R.M->mp
+	mem(Stw, Rmp, Rreg, O(REG, MP));	// R.MP = Rmp
+
+	mem(Ldw, RA1, RA3, O(Modlink, compiled));
 	branch3 = code;
 	BNEZ(RA1, 0);
 
@@ -1186,11 +1270,11 @@ macmcal(void)
 	mem(Stw, Rfp, Rreg, O(REG, FP)); // R.FP = Rfp
 	mem(Stw, RA0, Rreg, O(REG, PC)); // R.PC = Rpc
 	mem(Ldw, Rlink, Rreg, O(REG, xpc));
-	RETURN;			// Return to xec uncompiled code
+	RETURN;				// Leave it to the interpreter to handle
 
 	// else
 	PATCHBRANCH(branch3);
-	JR(RA0, 0);		// Return to compiled code
+	JR(RA0, 0);			// Jump to the compiled module
 }
 
 static void
@@ -1559,9 +1643,12 @@ commframe(Inst *i)
 	if ((i->add & ARM) == AXIMM) {
 		mem(Ldw, RA3, RA0, OA(Modlink, links) + i->reg*sizeof(Modl) + O(Modl, frame));
 	} else {
+		// RA1 = src->links[src2]
 		op2(Ldw, i, RA1);
-		loadi(Rtmp, sizeof(Modl));
-		MUL(RA1, RA1, Rtmp);
+		multiply(RA1, RA1, sizeof(Modl));
+		ADD(RA1, RA1, RA0);
+
+		// RA3 = src->links[src2]->frame
 		mem(Ldw, RA3, RA1, O(Modl, frame));
 	}
 
@@ -1590,28 +1677,31 @@ commcall(Inst *i)
 	// Compile a mcall instruction
 	ulong *branch;
 
-	loadi(RA0, RELPC(patch[i - mod->prog+1])); // Get PC
-	op1(Ldw, i, RA2);			// Load the src1 argument into RA2
-	mem(Stw, RA0, RA2, O(Frame, lr));	// link(src1) = pc
-	mem(Stw, Rfp, RA2, O(Frame, fp));	// frame(src1) = fp
-	mem(Ldw, RA3, Rreg, O(REG, M)); 	// Load the addr of the module struct
-	mem(Stw, RA3, RA2, O(Frame, mr));	// mod(src1) = current_moduleptr
+	op1(Ldw, i, RA2);			// RA2 = src1 = frame
+	loadi(RA0, RELPC(patch[i - mod->prog+1])); // RA0 = pc
+	mem(Stw, RA0, RA2, O(Frame, lr));	// frame.lr = RA0 = pc
+	mem(Stw, Rfp, RA2, O(Frame, fp));	// frame.fp = fp
+	mem(Ldw, RA3, Rreg, O(REG, M)); 	// RA3 = R.M
+	mem(Stw, RA3, RA2, O(Frame, mr));	// frame.mr = RA3 = R.M
 
-	op3(Ldw, i, RA3); // Load the src3 argument into RA3
+	op3(Ldw, i, RA3); // RA3 = src3 = Modlink
 
 	branch = code;
 	BEQ(RA3, Rh, 0);
 	// If RA3 != H
 
-	// pc = src3->links[src2]->pc
+	// RA0 = Modlink->links[src2]->pc
 	if ((i->add&ARM) == AXIMM) {
 		// i->reg contains the immediate of src2, don't have to store it in a register
-		mem(Ldw, RA0, RA3, OA(Modlink, links)+i->reg*sizeof(Modl)+O(Modl, u.pc));
+		mem(Ldw, RA0, RA3, OA(Modlink, links) + i->reg*sizeof(Modl) + O(Modl, u.pc));
 	} else {
-		op2(Ldw, i, RA1);
-		loadi(Rtmp, sizeof(Modl));
-		MUL(RA1, RA1, Rtmp);
-		mem(Ldw, RA0, RA1, OA(Modlink, links)+O(Modl, u.pc));
+		op2(Ldw, i, RA1);		// RA1 = src2
+
+		// RA1 *= sizeof(Modl)
+		multiply(RA1, RA1, sizeof(Modl));
+
+		ADDI(RA1, RA1, RA3);
+		mem(Ldw, RA0, RA1, OA(Modlink, links) + O(Modl, u.pc));
 	}
 
 	PATCHBRANCH(branch); // endif
@@ -1734,14 +1824,7 @@ comp(Inst *i)
 		error(buf);
 		break;
 	case IMCALL:
-		// TODO
-		//punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC, optab[i->op]);
-		//break;
-
-		if((i->add&ARM) == AXIMM)
-			commcall(i);
-		else
-			punt(i, SRCOP|DSTOP|THREOP|WRTPC|NEWPC, optab[i->op]);
+		commcall(i);
 		break;
 	case ISEND:
 	case IRECV:
