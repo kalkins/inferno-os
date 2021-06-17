@@ -341,7 +341,6 @@ enum {
 #define OFF(ptr)			((ulong)(ptr) - (ulong) (code))
 
 // Call a function at the given address
-//#define CALL(o)				(ADDI(R2, R2, -4), SW(R1, R2, 0), LUI(Rtmp, SPLITH(o)), JRL(Rtmp, SPLITL(o)), LW(R1, R2, 0), ADDI(R2, R2, 4))
 #define CALL(o)				(LUI(Rtmp, SPLITH(o)), JRL(Rtmp, SPLITL(o)))
 
 // Return from a function
@@ -350,12 +349,18 @@ enum {
 // Call a macro. Takes the macro idx as the argument
 #define CALLMAC(idx)			CALL(IA(macro, idx))
 
-// Jump to a pointer relative to the current code address
-#define JREL(ptr)			JUMP(OFF(ptr))
+// Jump to a specific address
+#define JABS(ptr)			(LUI(Rtmp, ptr), JR(Rtmp, ptr))
+
+// Jump to a Dis address
+#define JDIS(pc)			JABS(IA(patch, pc))
+
+// Jump to an address in the dst field of an instruction
+#define JDST(i)				JDIS(((ulong) i->d.ins - (ulong) mod->prog) >> 2)
 
 // Set the offset of a branch instruction at address ptr to the current code address
 // The order is opposite from OFF because it is used where the branch should jump to,
-// not where it is
+// not where it jumps from
 #define PATCHBRANCH(ptr)		*ptr |= Bimm((ulong)(code) - (ulong)(ptr))
 
 // Gets the address of a PC relative to the base
@@ -916,7 +921,7 @@ movloop(uint s)
 	ADDI(RA1, RA2, s);
 	ADDI(RA3, RA3, -s);
 
-	JREL(loop);
+	JABS(loop);
 
 	PATCHBRANCH(loop);
 }
@@ -1036,7 +1041,7 @@ branch(Inst *i, int mtype, int btype)
 		break;
 	}
 
-	JREL(IA(patch, i->d.ins - mod->prog));
+	JDST(i);
 
 	PATCHBRANCH(branch);
 }
@@ -1101,7 +1106,7 @@ branchl(Inst *i, int btype)
 		break;
 	}
 
-	JREL(IA(patch, i->d.ins - mod->prog));
+	JDST(i);
 
 	PATCHBRANCH(branch);
 }
@@ -1146,7 +1151,7 @@ branchfd(Inst *i, int btype)
 		break;
 	}
 
-	JREL(IA(patch, i->d.ins - mod->prog));
+	JDST(i);
 
 	PATCHBRANCH(branch);
 }
@@ -1308,7 +1313,7 @@ maccase(void)
 
 	// if v < l[1]
 	MOV(RA2, RA0);			// n = n2
-	JREL(loop);			// continue
+	JABS(loop);			// continue
 
 	// if v >= l[1]
 	PATCHBRANCH(branch);
@@ -1321,7 +1326,7 @@ maccase(void)
 	SUB(RA2, RA2, RA0);		// n -= n2
 	ADDI(RA2, RA2, -1);		// n -= 1
 
-	JREL(loop);			// goto loop
+	JABS(loop);			// goto loop
 
 	// endloop
 
@@ -2049,7 +2054,7 @@ comp(Inst *i)
 
 		mem(Ldw, RA1, RA1, O(List, tail));	// RA0 = RA0->tail
 		ADDI(RA0, RA0, 1);			// RA1++
-		JREL(loop);
+		JABS(loop);
 		// endwhile
 
 		PATCHBRANCH(loop);
@@ -2061,10 +2066,10 @@ comp(Inst *i)
 		mem(Stw, RA1, RA0, O(Frame, lr));
 		mem(Stw, Rfp, RA0, O(Frame, fp));
 		MOV(Rfp, RA0);
-		JREL(IA(patch, i->d.ind - (ulong) mod->prog));
+		JDST(i);
 		break;
 	case IJMP:
-		JREL(IA(patch, i->d.ind - (ulong) mod->prog));
+		JDST(i);
 		break;
 	case IBEQW:
 		branch(i, Ldw, EQ);

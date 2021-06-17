@@ -5,13 +5,13 @@ include "sys.m";
         print: import sys;
 #include "sh.m";
 #        sh: Sh;
-#include "draw.m";
-#        draw: Draw;
-#        Context: import draw;
+include "draw.m";
+        draw: Draw;
+        Context: import draw;
 
 Bootpreadlen: con 128;
 
-#Command: module { init: fn(ctxt: ref Context, argv: list of string); };
+Command: module { init: fn(ctxt: ref Context, argv: list of string); };
 
 Init: module
 {
@@ -24,14 +24,14 @@ init()
     sys->print("init: starting shell\n");
 
     #sh = load Sh Sh->PATH;
-    #shell := load Command "/dis/sh.dis";
+    shell := load Command "/dis/sh.dis";
 
-    #sys->bind("#i", "/dev", sys->MREPL);   # draw device
-    #sys->bind("#m", "/dev", sys->MAFTER);  # mouse device
-    #sys->bind("#c", "/dev", sys->MAFTER);  # console device
-    #sys->bind("#u", "/dev", sys->MAFTER);  # usb
-    #sys->bind("#S", "/dev", sys->MAFTER);  # storage devices
+    sys->bind("#i", "/dev", sys->MREPL);   # draw device
+    sys->bind("#m", "/dev", sys->MAFTER);  # mouse device
+    sys->bind("#c", "/dev", sys->MAFTER);  # console device
+    sys->bind("#u", "/dev", sys->MAFTER);  # usb
+    sys->bind("#S", "/dev", sys->MAFTER);  # storage devices
 
     #sh->system(nil, "wm/wm");
-    #spawn shell->init(nil, "sh" :: "-i" :: nil);
+    spawn shell->init(nil, "sh" :: "-i" :: nil);
 }
