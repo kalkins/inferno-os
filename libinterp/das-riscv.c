@@ -24,6 +24,8 @@
 #define getUimm(w)			(imm31(w))
 #define getJimm(w)			(imm10t1(w) | imm19t12(w) | (((w) >> 9) & 0x800) | (sign(w) & 0xFFF00000))
 
+#define getshamt(w)			getrs2(w)
+
 enum {
 	// Opcodes
 	OP		= 51,		// 0b0110011
@@ -124,6 +126,17 @@ decodeItype(ulong pc, Instr *i)
 }
 
 static void
+decodeIshifttype(ulong pc, Instr *i)
+{
+	i->rd = getrd(i->w);
+	i->rs1 = getrs1(i->w);
+
+	i->funct3 = getfunct3(i->w);
+	i->funct7 = getfunct7(i->w);
+	i->imm = getshamt(i->w);
+}
+
+static void
 decodeStype(ulong pc, Instr *i)
 {
 	i->rs1 = getrs1(i->w);
@@ -198,7 +211,7 @@ decodeop(ulong pc, Instr *i)
 static int
 decodeopimm(ulong pc, Instr *i)
 {
-	static Instrlist list[] = {
+	static Instrlist opimm[] = {
 		{"addi",   .funct3=0},
 		{"slti",   .funct3=2},
 		{"sltiu",  .funct3=3},
@@ -210,10 +223,27 @@ decodeopimm(ulong pc, Instr *i)
 	char *name = "unknown OP-IMM";
 	decodeItype(pc, i);
 
-	for (int j = 0; j < sizeof(list); j++) {
-		if (list[j].funct3 == i->funct3) {
-			name = list[j].name;
-			break;
+	for (int j = 0; j < sizeof(opimm); j++) {
+		if (opimm[j].funct3 == i->funct3) {
+			name = opimm[j].name;
+			snprint(i->buf, i->bufsize, "%s\tx%d, x%d, %d", name, i->rd, i->rs1, i->imm);
+			return 1;
+		}
+	}
+
+	static Instrlist shifts[] = {
+		{"slli",  .funct3=1,  .funct7=0},
+		{"srli",  .funct3=5,  .funct7=0},
+		{"srai",  .funct3=5,  .funct7=32},
+	};
+
+	decodeIshifttype(pc, i);
+
+	for (int j = 0; j < sizeof(shifts); j++) {
+		if (shifts[j].funct3 == i->funct3 && shifts[j].funct7 == i->funct7) {
+			name = shifts[j].name;
+			snprint(i->buf, i->bufsize, "%s\tx%d, x%d, %d", name, i->rd, i->rs1, i->imm);
+			return 1;
 		}
 	}
 
