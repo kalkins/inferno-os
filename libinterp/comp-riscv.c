@@ -147,7 +147,7 @@ enum {
 #define IMML		0x00000FFF
 
 // Check if a immidiate has to be split over multiple instructions
-#define SPLITIMM(imm)					((((((ulong)imm) & IMMH) != 0)) && ((((ulong)(imm)) & IMMSIGNED) != IMMSIGNED))
+#define SPLITIMM(imm)					((((((ulong)(imm)) & IMMSIGNED) != 0)) && ((((ulong)(imm)) & IMMSIGNED) != IMMSIGNED))
 
 #define SPLITH(imm)					((((ulong)(imm)) + ((((ulong)(imm)) & (1<<11)) ? (1<<12) : 0)) & IMMH)
 #define SPLITL(imm)					(((ulong)(imm)) & IMML)
