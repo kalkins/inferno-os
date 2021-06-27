@@ -350,13 +350,13 @@ enum {
 #define CALLMAC(idx)			CALL(IA(macro, idx))
 
 // Jump to a specific address
-#define JABS(ptr)			(LUI(Rtmp, ptr), JR(Rtmp, ptr))
+#define JABS(ptr)			(LUI(Rtmp, SPLITH(ptr)), JR(Rtmp, SPLITL(ptr)))
 
 // Jump to a Dis address
 #define JDIS(pc)			JABS(IA(patch, pc))
 
 // Jump to an address in the dst field of an instruction
-#define JDST(i)				JDIS(((ulong) i->d.ins - (ulong) mod->prog) >> 2)
+#define JDST(i)				JDIS((i->d.ins - mod->prog))
 
 // Set the offset of a branch instruction at address ptr to the current code address
 // The order is opposite from OFF because it is used where the branch should jump to,
@@ -402,7 +402,13 @@ static	void	macmfra(void);
 static	void	macrelq(void);
 static	void movmem(Inst*);
 static	void mid(Inst*, int, int);
+
 extern	void	das(ulong*, int);
+extern  void    _d2v(vlong *y, double d);
+
+// Float constants
+double double05 = 0.5;
+double double4294967296 = 4294967296.0;
 
 #define T(r)	*((void**)(R.r))
 
@@ -564,9 +570,9 @@ mem(int type, int r, int base, long offset)
 		// The offset is too long. Add the upper part of offset to rs in the tmp register,
 		// and use that as the base instead.
 		LUI(Rtmp, SPLITH(offset));
-		ADD(Rtmp, Rtmp, SPLITL(base));
+		ADD(Rtmp, Rtmp, base);
 		base = Rtmp;
-		offset = offset & IMML;
+		offset = SPLITL(offset);
 	}
 
 	switch (type) {
@@ -1862,11 +1868,31 @@ comp(Inst *i)
 	case IMNEWZ:
 	case ILSRW:
 	case ILSRL:
-	case IMODW:
-	case IMODB:
-	case IDIVW:
-	case IDIVB:
 		punt(i, SRCOP|DSTOP|THREOP, optab[i->op]);
+		break;
+	case IMODW:
+		op1(Ldw, i, RA1);
+		op2(Ldw, i, RA0);
+		REM(RA0, RA0, RA1);
+		op3(Stw, i, RA0);
+		break;
+	case IMODB:
+		op1(Ldb, i, RA1);
+		op2(Ldb, i, RA0);
+		REM(RA0, RA0, RA1);
+		op3(Stb, i, RA0);
+		break;
+	case IDIVW:
+		op1(Ldw, i, RA1);
+		op2(Ldw, i, RA0);
+		DIV(RA0, RA0, RA1);
+		op3(Stw, i, RA0);
+		break;
+	case IDIVB:
+		op1(Ldb, i, RA1);
+		op2(Ldb, i, RA0);
+		DIV(RA0, RA0, RA1);
+		op3(Stb, i, RA0);
 		break;
 	case ILOAD:
 	case INEWA:
@@ -2160,8 +2186,8 @@ comp(Inst *i)
 		op3(Stw, i, RA0);
 		break;
 	case ISUBW:
-		op1(Ldw, i, RA1);
-		op2(Ldw, i, RA2);
+		op1(Ldw, i, RA2);
+		op2(Ldw, i, RA1);
 		SUB(RA0, RA1, RA2);
 		op3(Stw, i, RA0);
 		break;
@@ -2308,46 +2334,42 @@ comp(Inst *i)
 	case IORL:
 	case IANDL:
 	case IXORL:
-		// RA1, RA2 = src1
-		op1(Laddr, i, RA0);
+		// The Dis instructions uses the format "src3 = src2 op src1",
+		// which is opposite to RISC-V. To make the code more intuitive the order
+		// is switched here, so the operations are "src3 = RA1.RA2 op RA3.RA4"
+
+		// RA1, RA2 = src2
+		op2(Laddr, i, RA0);
 		mem(Ldw, RA1, RA0, 0);
 		mem(Ldw, RA2, RA0, 4);
 
-		// RA3, RA4 = src2
-		op2(Laddr, i, RA0);
+		// RA3, RA4 = src1
+		op1(Laddr, i, RA0);
 		mem(Ldw, RA3, RA0, 0);
 		mem(Ldw, RA4, RA0, 4);
 
 		switch (i->op) {
 		case IADDL:
-			ADD(RA0, RA1, RA3);		// RA0 = src1[31:0] + src2[31:0]
-			ADD(RA2, RA2, RA4);		// RA2 = src1[63:32] + src2[63:32]
+			ADD(RA0, RA1, RA3);		// RA0 = src2[31:0] + src1[31:0]
+			ADD(RA2, RA2, RA4);		// RA2 = src2[63:32] + src1[63:32]
 
-			// Check for overflow. Only happens when the result is smaller
-			// than the first operand, and the other isn't negative
-			SLTI(RA3, RA3, 0);		// RA3 = src2[31:0] < 0 ? 1 : 0
-			SLT(RA1, RA0, RA1);		// RA1 = RA0 < src1[31:0] ? 1 : 0
+			// Check for overflow
+			SLTU(RA1, RA0, RA1);		// RA1 = RA0 < src2[31:0] ? 1 : 0
 
-			// If RA1 and RA3 not equal, there was overflow
-			// Do a XOR and ADD instead of branch
-			XOR(RA1, RA1, RA3);
+			// Add the overflow to the upper bits
 			ADD(RA2, RA2, RA1);
 
 			// Move the lower result to RA1
 			MOV(RA1, RA0);
 			break;
 		case ISUBL:
-			SUB(RA0, RA1, RA3);		// RA0 = src1[31:0] - src2[31:0]
-			SUB(RA2, RA2, RA4);		// RA2 = src1[63:32] - src2[63:32]
+			SUB(RA0, RA1, RA3);		// RA0 = src2[31:0] - src1[31:0]
+			SUB(RA2, RA2, RA4);		// RA2 = src2[63:32] - src1[63:32]
 
-			// Check for underflow. Only happens when the result is larger
-			// than the first operand, and the other isn't negative
-			SLTI(RA3, RA3, 0);		// RA3 = src2[31:0] < 0 ? 1 : 0
-			SLT(RA1, RA1, RA0);		// RA1 = src1[31:0] < RA0 ? 1 : 0
+			// Check for underflow
+			SLTU(RA1, RA1, RA0);		// RA1 = src2[31:0] < RA0 ? 1 : 0
 
-			// If RA1 and RA3 not equal, there was underflow
-			// Do a XOR and SUB instead of branch
-			XOR(RA1, RA1, RA3);
+			// Add the underflow to the upper bits
 			SUB(RA2, RA2, RA1);
 
 			// Move the lower result to RA1
@@ -2402,8 +2424,47 @@ comp(Inst *i)
 		branchl(i, GE);
 		break;
 	case ICVTFL:
+		ADDI(Rsp, Rsp, -16);
+
+		op1(Ldd, i, F1);		// Load the double to convert
+		op3(Laddr, i, Rarg);		// Load the destination as the first argument to _d2v
+
+		// Round F1 by adding 0.5 or -0.5
+
+		// F2 = 0.5
+		LUI(Rta, SPLITH(&double05));
+		mem(Ldd, F2, Rta, SPLITL(&double05));
+
+		FSGNJD(F2, F2, F1);		// F2 = F1 >= 0 ? F2 : -F2
+		FADDD(RM, F1, F1, F2);		// F1 += F2
+
+		mem(Std, F1, Rsp, 8);		// Store F1 as the second argument, and call _d2v
+
+		// Call _d2v
+		mem(Stw, Rfp, Rreg, O(REG, FP));
+		CALL(_d2v);
+		loadi(Rreg, (ulong) &R);
+		mem(Ldw, Rfp, Rreg, O(REG, FP));
+		mem(Ldw, Rmp, Rreg, O(REG, MP));
+
+		ADDI(Rsp, Rsp, 16);
+		break;
 	case ICVTLF:
-		punt(i, SRCOP|DSTOP, optab[i->op]);
+		op1(Laddr, i, Rta);
+		mem(Ldw, RA0, Rta, 0);
+		mem(Ldw, RA1, Rta, 4);
+
+		FCVTDWU(RM, F0, RA0);		// F0 = float(unsigned src[0:31])
+		FCVTDW(RM, F1, RA1);		// F1 = float(src[32:63])
+
+		// F2 = 4294967296
+		LUI(Rta, SPLITH(&double4294967296));
+		mem(Ldd, F2, Rta, SPLITL(&double4294967296));
+
+		FMADDD(RM, F0, F1, F2, F0);	// F0 = F1 * F2 + F0
+
+		// Store the result
+		op3(Std, i, F0);
 		break;
 	case IDIVF:
 		op1(Ldd, i, F1);
